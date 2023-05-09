@@ -45,6 +45,12 @@ Please design a REST service to support those operations. It should scale to mil
     - [Data Model](#data-model)
     - [Data Access Patterns](#data-access-patterns)
   - [5. Scalability Sonsiderations](#5-scalability-sonsiderations)
+    - [What is Scalability?](#what-is-scalability)
+    - [VMs on the Cloud](#vms-on-the-cloud)
+    - [Containers](#containers)
+    - [Kubernetes](#kubernetes)
+    - [Redis](#redis)
+    - [Other Pieces](#other-pieces)
   - [6. Limitations](#6-limitations)
 
 
@@ -169,6 +175,7 @@ If successful, you will receive a response like that:
 
 </details>
 
+
 ## 3. Application Design
 
 The overall design of the application uses a 3 layer architecture. 
@@ -178,7 +185,7 @@ The overall design of the application uses a 3 layer architecture.
 
 ### 1. Service Layer
 
-This is the layer that interacts with the incoming HTTP requests and sends back the data. This layer is reponsible for a few things:
+This is the layer that interacts with the incoming HTTP requests and sends back the data. This layer is responsible for a few things:
 * Deserializing the HTTP JSON payload to our model classes.
 * Validating the request for immediate errors (e.g. sending an empty profileId)
 * Sending the proper validation errors and HTTP status codes in case of validation failure
@@ -187,7 +194,7 @@ This is the layer that interacts with the incoming HTTP requests and sends back 
 * Application level kill switching
 * Starting a trace or perpetuating an existing trace that might have started in the game ( one of the pillars of observability. The other two being logs and metrics). Depending on the platform, this step might not be manual.
 * Authentication and authorization if necessary
-* Mapping the application level exceptions to error codes and http status codes.
+* Mapping the application level exceptions to error codes and HTTP status codes.
 
 #### Model class
 
@@ -197,20 +204,20 @@ Our model class maps the incoming HTTP payload to the business logic objects. In
 
 This is the layer that is not concerned with external interactions, like the previous layer, rather it focuses on the main logic of our application. It is responsible for:
 
-* Application level validations, for example sending a Gamemode that doesn't exist, or is gated behind a season pass
+* Application level validations, for example sending a Gamemode that doesn't exist or is gated behind a season pass
 * Logging and sending the required metrics for observability
 * Interacting with the data layer to persist and retrieve data
-* There are some key moments in the game that the application logic should be informed of and respond to. Two in particular are crucial 1) player connection 2) player disconnection
+* There are some key moments in the game that the application logic should be informed of and respond to. Two, in particular, are crucial 1) player connection 2) player disconnection
 
 Our business logic class has two main methods for the two main use cases of this problem.
 
-1. `SaveProfileGameMode(Model model)` This method receives the player's current gamemode and region from the game and saves it through the DAL. But it also has to do some validations. For example it might be the case that transition between a few gamemodes are unauthorized for some players. For example if you're not the holder of a season pass, you cannot play the GM10 gamemode.
+1. `SaveProfileGameMode(Model model)` This method receives the player's current gamemode and region from the game and saves it through the DAL. But it also has to do some validations. For example, it might be the case that transitions between a few gamemodes are unauthorized for some players. For example, if you're not the holder of a season pass, you cannot play the GM10 gamemode.
    
 2. `GetPopularGameModes(string region): [] string` This method receives a region and should return the *current* most popular gamemodes for that region. For the response we can use a model object to specify the rank for each gamemode as well.
 
 ### 3. Data Access Layer
 
-This is the layer that interacts directly with our physical data storage. In the next section we will discuss our choice of data storage. This layer will use the SDK from the database vendor to interact with the physical storage. It is reponsible to open a connection, maintain the connection for the lifetime of the application
+This is the layer that interacts directly with our physical data storage. In the next section, we will discuss our choice of data storage. This layer will use the SDK from the database vendor to interact with the physical storage. It is responsible to open a connection, and maintain the connection for the lifetime of the application
 
 Our DAL has two main methods to support our business logic operations:
 
@@ -222,7 +229,7 @@ Our DAL has two main methods to support our business logic operations:
 
 ### Some Design Principles of Note
 
-1. Using interfaces: This kinda adheres to the O of SOLID design principles. We try to have *loose couplings* between different layers. The logic layer references the data layer, but should not depend on the concrete implementation of the DAL. If we decide to change the implmentation of the physical storage and consequently our DALs, this should not affect the other layers whatsoever. Moreover this makes it much easier to write tests, because we can easily mock our DALs using mocking frameworks.
+1. Using interfaces: This kinda adheres to the O of SOLID design principles. We try to have *loose couplings* between different layers. The logic layer references the data layer, but should not depend on the concrete implementation of the DAL. If we decide to change the implmentation of the physical storage and consequently our DALs, this should not affect the other layers whatsoever. Moreover, this makes it much easier to write tests, because we can easily mock our DALs using mocking frameworks.
 2. Dependency Injection: It is ideal to inject dependencies (from constructors) using a dependency injection container which also manages the lifetime of our classes.
 
 ## 4. Physical Data Storage
@@ -237,7 +244,7 @@ One of Redis' key features is its ability to store and manipulate complex data s
 
 Redis is particularly well-suited for transient data storage because it stores data in memory, which allows for very fast read and write operations. However, Redis also provides options for persisting data to disk, making it possible to use Redis for long-term data storage as well.
 
-I have former experience with Redis building a datastore for matchmaking. In my experience the sortedset data structure is a perfect candidate to model our data.
+I have former experience with Redis building a data store for matchmaking. In my experience, the sorted set data structure is a perfect candidate to model our data.
 
 ### Data Model
 
@@ -258,7 +265,7 @@ We have two data structures for two different use cases. Hash to store profile d
 ```
 
 2. **Sorted Sets** for the gamemode rankings per region.
-   A Redis sorted set is a collection of unique strings (members) ordered by an associated score. For example, you can use sorted sets to easily maintain ordered lists of the highest scores in a massive online game. For our case we store region as the key and gamemode as the value and increment the score everytime a player in that region enters that gamemode. This allows us to easily get the top N records for that region. It's blazing fast with a O(log(n)) time complexity for the two operations we will use them for.
+   A Redis sorted set is a collection of unique strings (members) ordered by an associated score. For example, you can use sorted sets to easily maintain ordered lists of the highest scores in a massive online game. For our case, we store region as the key and gamemode as the value and increment the score every time a player in that region enters that gamemode. This allows us to easily get the top N records for that region. It's blazing fast with an O(log(n)) time complexity for the two operations we will use them for.
 
 ``` javascript
     > ZINCRBY regions:CA 1 GM01
@@ -296,7 +303,7 @@ Our physical data storage must support the two operations defined in our applica
   4. Decrement the previous gamemode ranking for the user's' region.
    
    There are a few considerations here.
-   * All these operations should run together atomically. This is an ACID requirement. Redis has support for transactions using a few commands which guarantees two imporant things.
+   * All these operations should run together atomically. This is an ACID requirement. Redis has support for transactions using a few commands which guarantees two important things.
      * All commands in a transaction are serialized and executed sequentially. A request sent by another client will never be served in the middle of the execution of a Redis Transaction.
      * If the commit step of the transaction is not executed, or if the server calling the commit command loses the connection before that step (ah, yes we have multiple servers and we shall explain that in the Scalability section), none of these commands are executed.
   
@@ -314,7 +321,7 @@ Our physical data storage must support the two operations defined in our applica
         2) "3"
         3) "3"
   ```
-   * Another consideration is that we want this command to be executed only once in Isolation. Another ACID requirement. What do we mean by that? Well, because of the distributed of our web servers which is the response to 1 million concurrent users and scalability needs, we have multiple web servers running the application and it might be the case that the request to run this transaction to be sent by multiple webservers simultaneously. This situation we should protect our data against. Redis offers an optimistic locking mechanism that allows you to watch one or more keys in order to detect changes agains them. If at least one watched key is modified before the EXEC command, the whole transaction aborts, and EXEC returns a Null reply to notify that the transaction failed. We use the `WATCH` command to monitor a key.
+   * Another consideration is that we want this command executed only once in Isolation. Another ACID requirement. What do we mean by that? Well, because of the distribution of our web servers which is the response to 1 million concurrent users and scalability needs, we have multiple web servers running the application and it might be the case that the request to run this transaction be sent by various webservers simultaneously. This situation we should protect our data against. Redis offers an optimistic locking mechanism that allows you to watch one or more keys in order to detect changes against them. If at least one watched key is modified before the EXEC command, the whole transaction aborts and EXEC returns a Null reply to notify that the transaction failed. We use the `WATCH` command to monitor a key.
 
   ``` javascript
       > WATCH profiles:934ba404-f883-4c76-b648-212c616c3735 regions:CA regions:US
@@ -347,6 +354,79 @@ Our physical data storage must support the two operations defined in our applica
 
 ## 5. Scalability Sonsiderations
 
-When we talk about scalability we are really talking about our hardware environment. Our web servers runs on a physical machine and that machine can do only so many operations. When we start our d
+### What is Scalability?
+
+When we talk about scalability we are really talking about our hardware environment. Our web servers run on a physical machine that can do only so many operations. When we talk about running a REST API on a server depending on the expected load on our web server (that is sometimes measured by request/seconds or in our context by concurrent users) the discussion can change. If we expect a low load that can be handled by that one physical machine, and if it increases to an extent we can always add better hardware to our machine, increase memory, add more SSDs, better CPU, and so on. That is vertical scaling or scaling up. But obviously, in a context of one million concurrent users, we can scale up only so much. After which we have to add more machines that can handle the load. What is commonly referred to as horizontal scaling or scaling out
+
+When we choose horizontal scalability there are a few questions that naturally arise. For example, what type of machines are we going to need? Should we buy physical devices and set them up manually? Maybe. That depends on a few factors. But there are some hurdles if we go that way. The most challenging part of that is to set them up. That requires tremendous effort on the networking side, setting up physical equipment, a fast and reliable internet connection, and a dedicated team of experts to oversee the entire operation for the lifetime of our app. For most businesses that's not a viable solution.
+
+### VMs on the Cloud
+
+Fortunately nowadays with the advent of virtualization technologies and cloud computing, you don't really need to do any of that. What you would do instead is to rent virtual machines on a cloud provider and run your web servers (and obviously your dependencies like your Redis) on those machines.
+
+Multiple problem arises from running web servers running on multiple Virutal Machines.
+
+1. *Resource Overhead*: VMs require a significant amount of resources, including CPU, memory, and storage. Each VM requires its own operating system and software stack, which can result in higher resource utilization and overhead compared to containers. This can lead to higher costs and potentially slower performance.
+2. *Scalability*: Scaling VMs can be a challenge, as it often involves manually adding or removing virtual machines. This can be time-consuming and can lead to downtime or performance issues during scaling events.
+3. *Boot Time*: VMs can take longer to boot up and become available compared to containers, which can affect availability and scalability.
+4. *Configuration Management*: Managing and maintaining the configuration of VMs can be complex, particularly if you have a large number of virtual machines running across multiple regions.
+5. *Security*: Ensuring the security of VMs can be challenging, as each VM requires its own operating system and software stack, which can result in a larger attack surface compared to containers.
+6. *Vendor Lock-in*: Using VMs in the cloud can lead to vendor lock-in, as each cloud provider has their own virtualization technology and API, which can make it difficult to switch providers in the future.
+
+### Containers
+
+Because of all these issues, we should strive to do better. Luckily containers can resolve most of these issues. Containers are lightweight and isolated environments for running software applications, including all dependencies and configuration. They provide efficient and portable deployment options, and can be easily managed using container orchestration systems like Kubernetes which we'll discuss below. Containers can resolve most of the issues with VMs:
+
+1. *Resource Utilization*: Containers are a more lightweight and efficient alternative to VMs. They share the underlying operating system and hardware resources, resulting in lower resource utilization and overhead. This can lead to cost savings and improved performance.
+
+2. *Scalability*: Container orchestration systems, such as Kubernetes, make it easy to scale containers up or down automatically in response to changes in demand. This can help ensure high availability and prevent performance issues during scaling events.
+
+3. *Boot Time*: Containers start up quickly, which can improve availability and scalability. Containers can be started in seconds, compared to minutes or even hours for VMs.
+
+4. *Configuration Management*: Containers are easier to manage and maintain than VMs. They can be defined and managed using infrastructure-as-code tools like Docker Compose and Kubernetes YAML files. This makes it easier to manage large numbers of containers across multiple regions and environments.
+
+5. *Security*: Containers offer built-in isolation and security features, such as namespace isolation and container network segmentation. These features can help reduce the attack surface and improve security compared to VMs.
+
+6. *Vendor Lock-in*: Containers are highly portable and can be run on any container runtime or cloud provider that supports the container format. This makes it easier to switch providers or move workloads between environments without vendor lock-in.
+
+If we choose to run our web servers on containers that run on VMs, the first choice would be to manually manage them. But that comes with challenges:
+
+1. *Manual Scaling*: scaling containers requires manual intervention. This can be time-consuming and error-prone, and can lead to downtime or degraded performance if not done properly.
+
+2. *Limited Resource Utilization*: VMs are typically provisioned with a fixed amount of resources, which can result in underutilization or overprovisioning of resources for individual containers.
+
+3. *Limited Load Balancing*: load balancing must be done manually or with limited built-in tools provided by the container runtime. This can result in uneven distribution of traffic and overloading of individual containers.
+
+4. *Limited Self-Healing*: When containers fail or become unresponsive, manual intervention is required to restart or replace them which is time-consuming and tedious.
+
+
+### Kubernetes
+
+So all the roads lead to an orhcestration framework that can fascilitate running of our containers. Kubernetes is an open-source container orchestration platform that automates the deployment, scaling, and management of containerized applications. It provides a set of tools for managing containers, including automatic scaling, load balancing, self-healing, and efficient resource utilization, making it a good choice for building and operating highly scalable and resilient applications. Some of the reasons why an container orchestration framework like Kubernetes is essential are:
+
+1. **Simplified Management**: it simplifies the management of containerized applications by automating many of the tasks involved in deploying, scaling, and updating them. This allows us to focus on writing code rather than worrying about infrastructure.
+2. **Automatic Scaling**: Kubernetes can automatically scale the number of containers running based on demand. This means that as traffic increases, Kubernetes can quickly spin up additional containers to handle the load. Similarly, when traffic decreases, Kubernetes can scale down the number of containers to reduce costs.
+3. **Load Balancing**: Kubernetes includes built-in load balancing capabilities to distribute traffic across containers running in a cluster. This ensures that traffic is evenly distributed and that containers are not overloaded.
+4. **Self-Healing**: Kubernetes monitors the health of containers and can automatically restart or replace containers that fail or become unresponsive. This ensures that applications remain available and responsive, even in the event of failures.
+5. **Resource Optimization**: Kubernetes can optimize resource allocation by scheduling containers on nodes with available resources. This ensures that resources are utilized efficiently and that containers are not over-provisioned.
+
+
+### Redis
+
+Now that we have some degree of confidence in our application's ability to be scalable, we need to talk about our data storage when it comes to scalability. 
+Our choice of storage, Redis, offers two ways that can facilitate scalability:
+1. **Replication**: Redis supports master-slave replication, allowing for read scalability. The master node accepts writes, while the replica nodes receive a copy of the data and can handle read requests. This enables Redis to scale read traffic by distributing the load across multiple replica nodes.
+2. **Cluster mode**: Redis also provides a cluster mode, which allows for both read and write scalability. In cluster mode, Redis partitions the data across multiple nodes and automatically distributes reads and writes across the nodes.
+
+For our case, we have as many writes as reads, because of that, we should choose the cluster mode. Cluster mode, has support for automatic sharding and resharding. Sharding is done automatically across multiple nodes using chosen sharding strategy. Dynamic resharding allows for addition or removal of nodes without manual rebalancing. This makes Redis easy to scale up or down as needed. It also has built-in load balancer that distributes reads and writes across the nodes that results n evenly distributed nodes.
+
+### Other Pieces
+
+Kubernetes to a great extent facilitates our requirements. It handles load balancing, managing lifetime of the containers, scaling up and down of our instances, resiliency and resource management. But we still need a few more pieces to have a working solution. Namely an API Gateway, Edge Load Balancer and Observability Stack.
+
+1. **API Gateway**: API Gatway is the single entry point of external traffic to the application that proveds a layer of abstraction between application's microservices and the extertnal traffic. It offers service discovery and routing of the requests to the appropriate Kubernetes services. It can offer authentication and authorization, rate limiting, request validiation, encryption and so on. On top of all of that analytics and monitoring of the the traffic can also be offloaded to API Gateway. Some of the choices of an API Gateway software are Kong, Istio, Traefik and Ambassador.
+2. **Edge Load Balancer**: An edge or external HTTP(S) load balancer is a proxy-based Layer 7 load balancer that enables you to run and scale your services behind a single external IP address. The external HTTP(S) load balancer distributes HTTP and HTTPS traffic to backends hosted on a variety of your cloud platforms (such as Kubernetes cluster). This load balancer connectes the incoming traffic to downstrean API Gateway. This is usually provided by the Cloud Provider.
+3. **Observability Stack**: This is not related to the Scalability considerations but it's worth mentioning as part of our global architecture. Observability refers to the ability to measure a system’s current state based on the data it generates, such as logs, metrics, and traces. This is important because the cloud-native environments have gotten more complex and troubleshooting the root cause of a failure have become more difficult to pinpoint. This enables us to collect relevant data and be proactive about our system and address a potential bottleneck. The three pillars of observability are logs, metrics and traces. The industry relies on standard practices and widely accepted software and tools to implement observability. OpenTelemetry, Prometheus and Grafana are some of the accepted tools that can help us achieve observability goals.
+
 
 ## 6. Limitations
