@@ -429,4 +429,6 @@ Kubernetes to a great extent facilitates our requirements. It handles load balan
 3. **Observability Stack**: This is not related to the Scalability considerations but it's worth mentioning as part of our global architecture. Observability refers to the ability to measure a system’s current state based on the data it generates, such as logs, metrics, and traces. This is important because the cloud-native environments have gotten more complex and troubleshooting the root cause of a failure have become more difficult to pinpoint. This enables us to collect relevant data and be proactive about our system and address a potential bottleneck. The three pillars of observability are logs, metrics and traces. The industry relies on standard practices and widely accepted software and tools to implement observability. OpenTelemetry, Prometheus and Grafana are some of the accepted tools that can help us achieve observability goals.
 
 
+![Architecture Diagram](architecture.jpg "architecture diagram")
+
 ## 6. Limitations
