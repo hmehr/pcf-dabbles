@@ -347,4 +347,6 @@ Our physical data storage must support the two operations defined in our applica
 
 ## 5. Scalability Sonsiderations
 
+When we talk about scalability we are really talking about our hardware environment. Our web servers runs on a physical machine and that machine can do only so many operations. When we start our d
+
 ## 6. Limitations
