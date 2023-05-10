@@ -1,10 +1,10 @@
-##2D Array Problem
+## 2D Array Problem
 
 
 This solution is written using .net6.0 and C# 10. I chose C# because of the readbility and prior expertise.
 
 
-## I came up with two different solutions to this 2D array problem.
+### Two solutions
 
 1. Functional solution which is the easy wone with a few static functions without changing any state. This solution works but it's rather messy. While I was doing that, I thought that I can do a cleaner solution with some classes and a nice design following OOO principles.
 2. Object Oriented solution which uses a few classes to save the state of the traveresed matrix.
