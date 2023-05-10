@@ -51,7 +51,8 @@ Please design a REST service to support those operations. It should scale to mil
     - [Kubernetes](#kubernetes)
     - [Redis](#redis)
     - [Other Pieces](#other-pieces)
-  - [6. Limitations](#6-limitations)
+  - [6. Limitations and Challenges](#6-limitations-and-challenges)
+  - [7. Final Words](#7-final-words)
 
 
 ## 1. Requirements
@@ -375,7 +376,7 @@ Multiple problem arises from running web servers running on multiple Virutal Mac
 
 ### Containers
 
-Because of all these issues, we should strive to do better. Luckily containers can resolve most of these issues. Containers are lightweight and isolated environments for running software applications, including all dependencies and configuration. They provide efficient and portable deployment options, and can be easily managed using container orchestration systems like Kubernetes which we'll discuss below. Containers can resolve most of the issues with VMs:
+Because of all these issues, we should strive to do better. Luckily containers can resolve most of these issues. Containers are lightweight and isolated environments for running software applications, including all dependencies and configurations. They provide efficient and portable deployment options and can be easily managed using container orchestration systems like Kubernetes which we'll discuss below. Containers can resolve most of the issues with VMs:
 
 1. *Resource Utilization*: Containers are a more lightweight and efficient alternative to VMs. They share the underlying operating system and hardware resources, resulting in lower resource utilization and overhead. This can lead to cost savings and improved performance.
 
@@ -391,7 +392,7 @@ Because of all these issues, we should strive to do better. Luckily containers c
 
 If we choose to run our web servers on containers that run on VMs, the first choice would be to manually manage them. But that comes with challenges:
 
-1. *Manual Scaling*: scaling containers requires manual intervention. This can be time-consuming and error-prone, and can lead to downtime or degraded performance if not done properly.
+1. *Manual Scaling*: scaling containers requires manual intervention. This can be time-consuming and error-prone and can lead to downtime or degraded performance if not done properly.
 
 2. *Limited Resource Utilization*: VMs are typically provisioned with a fixed amount of resources, which can result in underutilization or overprovisioning of resources for individual containers.
 
@@ -402,11 +403,11 @@ If we choose to run our web servers on containers that run on VMs, the first cho
 
 ### Kubernetes
 
-So all the roads lead to an orhcestration framework that can fascilitate running of our containers. Kubernetes is an open-source container orchestration platform that automates the deployment, scaling, and management of containerized applications. It provides a set of tools for managing containers, including automatic scaling, load balancing, self-healing, and efficient resource utilization, making it a good choice for building and operating highly scalable and resilient applications. Some of the reasons why an container orchestration framework like Kubernetes is essential are:
+So all the roads lead to an orchestration framework that can facilitate the running of our containers. Kubernetes is an open-source container orchestration platform that automates the deployment, scaling, and management of containerized applications. It provides a set of tools for managing containers, including automatic scaling, load balancing, self-healing, and efficient resource utilization, making it a good choice for building and operating highly scalable and resilient applications. Some of the reasons why an container orchestration framework like Kubernetes is essential are:
 
 1. **Simplified Management**: it simplifies the management of containerized applications by automating many of the tasks involved in deploying, scaling, and updating them. This allows us to focus on writing code rather than worrying about infrastructure.
 2. **Automatic Scaling**: Kubernetes can automatically scale the number of containers running based on demand. This means that as traffic increases, Kubernetes can quickly spin up additional containers to handle the load. Similarly, when traffic decreases, Kubernetes can scale down the number of containers to reduce costs.
-3. **Load Balancing**: Kubernetes includes built-in load balancing capabilities to distribute traffic across containers running in a cluster. This ensures that traffic is evenly distributed and that containers are not overloaded.
+3. **Load Balancing**: Kubernetes includes built-in load-balancing capabilities to distribute traffic across containers running in a cluster. This ensures that traffic is evenly distributed and that containers are not overloaded.
 4. **Self-Healing**: Kubernetes monitors the health of containers and can automatically restart or replace containers that fail or become unresponsive. This ensures that applications remain available and responsive, even in the event of failures.
 5. **Resource Optimization**: Kubernetes can optimize resource allocation by scheduling containers on nodes with available resources. This ensures that resources are utilized efficiently and that containers are not over-provisioned.
 
@@ -414,21 +415,37 @@ So all the roads lead to an orhcestration framework that can fascilitate running
 ### Redis
 
 Now that we have some degree of confidence in our application's ability to be scalable, we need to talk about our data storage when it comes to scalability. 
-Our choice of storage, Redis, offers two ways that can facilitate scalability:
-1. **Replication**: Redis supports master-slave replication, allowing for read scalability. The master node accepts writes, while the replica nodes receive a copy of the data and can handle read requests. This enables Redis to scale read traffic by distributing the load across multiple replica nodes.
-2. **Cluster mode**: Redis also provides a cluster mode, which allows for both read and write scalability. In cluster mode, Redis partitions the data across multiple nodes and automatically distributes reads and writes across the nodes.
+Our choice of storage, Redis, offers a key feature that can facilitate scalability:
 
-For our case, we have as many writes as reads, because of that, we should choose the cluster mode. Cluster mode, has support for automatic sharding and resharding. Sharding is done automatically across multiple nodes using chosen sharding strategy. Dynamic resharding allows for addition or removal of nodes without manual rebalancing. This makes Redis easy to scale up or down as needed. It also has built-in load balancer that distributes reads and writes across the nodes that results n evenly distributed nodes.
+**Cluster mode**: Redis has support for cluster mode, which allows for both read and write scalability. In cluster mode, Redis partitions the data across multiple nodes and automatically distributes reads and writes across the nodes. Redis clients are aware of the target node in the cluster read/write from/to that node directly. But this is not mandatory and they can read/write from/to any node. This is auto-routed by the cluster.
+Cluster mode offers replications for each node to prevent a single point of failure and provide high availability. In Redis, this is provided by the master-replica model. It does automatic failover when the primary node is unhealthy. 
+It also has support for automatic sharding and resharding. Sharding is done automatically across multiple nodes using a hash slot sharding strategy. There are 16384 hash slots in Redis Cluster, and to compute the hash slot for a given key, it simply takes the CRC16 of the key modulo 16384. Every node in a Redis Cluster is responsible for a subset of the hash slots. This makes it easy to add and remove cluster nodes dynamically without any downtime. This makes Redis easy to scale up or down as needed.
+
 
 ### Other Pieces
 
-Kubernetes to a great extent facilitates our requirements. It handles load balancing, managing lifetime of the containers, scaling up and down of our instances, resiliency and resource management. But we still need a few more pieces to have a working solution. Namely an API Gateway, Edge Load Balancer and Observability Stack.
+Kubernetes to a great extent facilitates our requirements. It handles load balancing, managing the lifetime of the containers, scaling up and down of our instances, resiliency, and resource management. But we still need a few more pieces to have a working solution. Namely an API Gateway, Edge Load Balancer, and Observability Stack.
 
-1. **API Gateway**: API Gatway is the single entry point of external traffic to the application that proveds a layer of abstraction between application's microservices and the extertnal traffic. It offers service discovery and routing of the requests to the appropriate Kubernetes services. It can offer authentication and authorization, rate limiting, request validiation, encryption and so on. On top of all of that analytics and monitoring of the the traffic can also be offloaded to API Gateway. Some of the choices of an API Gateway software are Kong, Istio, Traefik and Ambassador.
-2. **Edge Load Balancer**: An edge or external HTTP(S) load balancer is a proxy-based Layer 7 load balancer that enables you to run and scale your services behind a single external IP address. The external HTTP(S) load balancer distributes HTTP and HTTPS traffic to backends hosted on a variety of your cloud platforms (such as Kubernetes cluster). This load balancer connectes the incoming traffic to downstrean API Gateway. This is usually provided by the Cloud Provider.
-3. **Observability Stack**: This is not related to the Scalability considerations but it's worth mentioning as part of our global architecture. Observability refers to the ability to measure a system’s current state based on the data it generates, such as logs, metrics, and traces. This is important because the cloud-native environments have gotten more complex and troubleshooting the root cause of a failure have become more difficult to pinpoint. This enables us to collect relevant data and be proactive about our system and address a potential bottleneck. The three pillars of observability are logs, metrics and traces. The industry relies on standard practices and widely accepted software and tools to implement observability. OpenTelemetry, Prometheus and Grafana are some of the accepted tools that can help us achieve observability goals.
+1. **API Gateway**: API Gateway is the single entry point of external traffic to the application that provides a layer of abstraction between the application's microservices and extertnal traffic. It offers service discovery and routing of the requests to the appropriate Kubernetes services. It can offer authentication and authorization, rate limiting, request validation, encryption, and so on. On top of all of that analytics and monitoring of the traffic can also be offloaded to API Gateway. Some of the choices of API Gateway software are Kong, Istio, Traefik and Ambassador.
+2. **Edge Load Balancer**: An edge or external HTTP(S) load balancer is a proxy-based Layer 7 load balancer that enables you to run and scale your services behind a single external IP address. The external HTTP(S) load balancer distributes HTTP and HTTPS traffic to backends hosted on a variety of your cloud platforms (such as the Kubernetes cluster). This load balancer connects the incoming traffic to downstream API Gateway. This is usually provided by the Cloud Provider.
+3. **Observability Stack**: This is not related to the Scalability considerations but it's worth mentioning as part of our global architecture. Observability refers to the ability to measure a system’s current state based on the data it generates, such as logs, metrics, and traces. This is important because the cloud-native environments has gotten more complex and troubleshooting the root cause of a failure have become more difficult to pinpoint. This enables us to collect relevant data and be proactive about our system and address a potential bottleneck. The three pillars of observability are logs, metrics, and traces. The industry relies on standard practices and widely accepted software and tools to implement observability. OpenTelemetry, Prometheus, and Grafana are some of the accepted tools that can help us achieve observability goals.
 
 
 ![Architecture Diagram](architecture.jpg "architecture diagram")
 
-## 6. Limitations
+## 6. Limitations and Challenges
+
+While Kubernetes and Cloud facilitate our scalability issues, help us reduce costs, and offer a reliable solution to our 1 million CCU problem, it also comes at a cost and certain challenges. Some of the challenges of Kubernetes are:
+* **Complexity**: It has many moving parts and requires a good understanding of how all the components work together.
+* **Steep Learning Curve**: Learning all those moving parts has a steep curve if prior knowledge is minimal.
+* **Scalability is not easy**: Even though the goal of using Kubernetes is to have seamless scalability without downtime, getting it right is not easy. It requires using many components and careful planning and considerations. Horizontal Pod Autoscalar (HPA) is the component that automatically scales the number of replicas based on CPU usage, memory utilization, or custom metrics. It uses the Kubernetes Metrics API to gather utilization metrics and dynamically adjusts the number of replicas based on the specified target CPU or memory utilization. To get these values right, you need to carefully scrutinize your application and this is not easy. Other components that are needed to be configured carefully include a PodDistributionBudget, Libeness/readiness probes, services, and ingresses, 
+* **Reduced Developer Focus**: To get k8s right, developers need to spend a nontrivial amount of time to build and operate it which can be used elsewhere. Let's take the simple case of running a test suite on the developer's machine. You know we all had that case where it works on our machine but not on our CI/CD pipeline. So we want to reproduce that issue locally, but it never is easy.
+
+![Who said it's easy?](cicd.png "cicd")
+
+* **CI/CD pipeline**: Speaking the of CI/CD pipeline, we'd be remiss if we didn't mention that. CI/CD is the bridge between source code and Kubernetes. Because k8s has a lot of complexity and your team has certain requirements and the choices are too many, getting it right takes time, patience, and many many iterations.
+* **Challenges of Redis**: Our data storage, Redis comes with its own set of challenges and limitations. For example, we discussed the case of dynamic resharding. That operation is not cheap. Data needs to move around when we need to add or remove a node and that can be time-consuming and resource intensive which causes performance overhead. Consistency is also limited. The case of HA comes with a nonzero chance that a slave node is promoted to master right after the master has accepted a write but it hasn't been promoted to the slave just yet. And that is a tradeoff between performance and consistency. A limitation that we should be aware of. Getting the clustering right, if we choose to manage it ourselves can be complex which requires careful configuration and monitoring to ensure data is distributed evenly.
+
+## 7. Final Words
+
+Thank you for taking the time to read my words. I understand that I might have gone at length, especially when discussing scalability concerns. The reason for that is that I had a path to get to the discussions around Kubernetes and how using it will solve a lot of problems. I had to walk that path, from the case for manual scalability and the problems with that which leads to the next logical iteration, how we might want to consider containers and what are the pros/cons of going that route to eventually reach the final design which was managed Kubernetes on a cloud provider. This is obviously not a perfect solution and as I stated comes with many pain points and challenges and there is room for further iterations and improvements. The reason I landed there is that setup is how I've created and operated a system that had to serve 1 million CCU. That system is still in use today and we're further improving it. But those discussions are beyond the scope of this document.
