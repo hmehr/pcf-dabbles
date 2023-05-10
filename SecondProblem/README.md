@@ -245,7 +245,7 @@ One of Redis' key features is its ability to store and manipulate complex data s
 
 Redis is particularly well-suited for transient data storage because it stores data in memory, which allows for very fast read and write operations. However, Redis also provides options for persisting data to disk, making it possible to use Redis for long-term data storage as well.
 
-I have former experience with Redis building a data store for matchmaking. In my experience, the sorted set data structure is a perfect candidate to model our data.
+I have former experience with Redis building a data store for matchmaking. In my experience, the sorted set data structure is a perfect candidate to model our data. Moreover, Redis shines in terms of performance when keeping the transient data in memory without the need to write on the disk. This is the case for us.
 
 ### Data Model
 
@@ -266,7 +266,7 @@ We have two data structures for two different use cases. Hash to store profile d
 ```
 
 2. **Sorted Sets** for the gamemode rankings per region.
-   A Redis sorted set is a collection of unique strings (members) ordered by an associated score. For example, you can use sorted sets to easily maintain ordered lists of the highest scores in a massive online game. For our case, we store region as the key and gamemode as the value and increment the score every time a player in that region enters that gamemode. This allows us to easily get the top N records for that region. It's blazing fast with an O(log(n)) time complexity for the two operations we will use them for.
+   A Redis sorted set is a collection of unique strings (members) ordered by an associated score. For example, you can use sorted sets to easily maintain ordered lists of the highest scores in a massive online game. For our case, we store region as the key and gamemode as the value and increment the score every time a player in that region enters that gamemode. This allows us to easily get the top N records for that region. It's blazing fast with an `O(log(n))` time complexity for the two operations we will use them for.
 
 ``` javascript
     > ZINCRBY regions:CA 1 GM01
@@ -277,7 +277,7 @@ We have two data structures for two different use cases. Hash to store profile d
     "2"
 ```
 
-    And if we want to get the top 3 ranks in the CA region:
+  And if we want to get the top 3 ranks in the CA region:
 
 
 ``` javascript
@@ -299,9 +299,9 @@ Our physical data storage must support the two operations defined in our applica
 * `CreateProfileGamemode(Model model)`
   This method at its core does a few operations
   1. Remove the previous gamemode from the user's data.
-  2. Add the new gamemode to the user's data, in this case if the hashfield doesn't exist, add it or if it does overwrite it with the new gamemode value.
+  2. Add the new gamemode to the user's data, in this case if the hash field doesn't exist, add it or if it does overwrite it with the new gamemode value.
   3. Increment the new gamemode ranking for the user's region.
-  4. Decrement the previous gamemode ranking for the user's' region.
+  4. Decrement the previous gamemode ranking for the user's region.
    
    There are a few considerations here.
    * All these operations should run together atomically. This is an ACID requirement. Redis has support for transactions using a few commands which guarantees two important things.
@@ -339,9 +339,9 @@ Our physical data storage must support the two operations defined in our applica
         1) "3"
         2) "3"
   ```
-      Using the above code, if there are race conditions and another client modifies the profile in the time between our call to WATCH and our call to EXEC, the transaction will fail.
+    Using the above code, if there are race conditions and another client modifies the profile in the time between our call to WATCH and our call to EXEC, the transaction will fail.
 
-* `GetGameModes(string region): [] Gamemodes`: This is a readonly method and is easily supported as a consequence of our choice of data models. We just probe our sorted set for the top N records. Because it's already sorted, this is blazing fast with a O(log(n)) complexity as stated above.
+* `GetGameModes(string region): [] Gamemodes`: This is a readonly method and is easily supported as a consequence of our choice of data models. We just probe our sorted set for the top N records. Because it's already sorted, this is blazing fast with an `O(log(n))` complexity as stated above.
 
 ``` javascript
     > ZREVRANGE regions:CA 0 2 WITHSCORES
@@ -367,11 +367,11 @@ Fortunately nowadays with the advent of virtualization technologies and cloud co
 
 Multiple problem arises from running web servers running on multiple Virutal Machines.
 
-1. *Resource Overhead*: VMs require a significant amount of resources, including CPU, memory, and storage. Each VM requires its own operating system and software stack, which can result in higher resource utilization and overhead compared to containers. This can lead to higher costs and potentially slower performance.
+1. *Resource Overhead*: VMs require a significant amount of resources, including CPU, memory, and storage. Each VM requires its own operating system and software stack, which can result in higher resource utilization and overhead. This can lead to higher costs and potentially slower performance.
 2. *Scalability*: Scaling VMs can be a challenge, as it often involves manually adding or removing virtual machines. This can be time-consuming and can lead to downtime or performance issues during scaling events.
-3. *Boot Time*: VMs can take longer to boot up and become available compared to containers, which can affect availability and scalability.
+3. *Boot Time*: VMs can take a long time to boot up and become available, which can affect availability and scalability.
 4. *Configuration Management*: Managing and maintaining the configuration of VMs can be complex, particularly if you have a large number of virtual machines running across multiple regions.
-5. *Security*: Ensuring the security of VMs can be challenging, as each VM requires its own operating system and software stack, which can result in a larger attack surface compared to containers.
+5. *Security*: Ensuring the security of VMs can be challenging, as each VM requires its own operating system and software stack, which can result in a larger attack surface.
 6. *Vendor Lock-in*: Using VMs in the cloud can lead to vendor lock-in, as each cloud provider has their own virtualization technology and API, which can make it difficult to switch providers in the future.
 
 ### Containers
@@ -414,21 +414,20 @@ So all the roads lead to an orchestration framework that can facilitate the runn
 
 ### Redis
 
-Now that we have some degree of confidence in our application's ability to be scalable, we need to talk about our data storage when it comes to scalability. 
+Now that we have some degree of confidence in our application's ability to scale, we need to talk about our data storage scalability. 
 Our choice of storage, Redis, offers a key feature that can facilitate scalability:
 
-**Cluster mode**: Redis has support for cluster mode, which allows for both read and write scalability. In cluster mode, Redis partitions the data across multiple nodes and automatically distributes reads and writes across the nodes. Redis clients are aware of the target node in the cluster read/write from/to that node directly. But this is not mandatory and they can read/write from/to any node. This is auto-routed by the cluster.
-Cluster mode offers replications for each node to prevent a single point of failure and provide high availability. In Redis, this is provided by the master-replica model. It does automatic failover when the primary node is unhealthy. 
-It also has support for automatic sharding and resharding. Sharding is done automatically across multiple nodes using a hash slot sharding strategy. There are 16384 hash slots in Redis Cluster, and to compute the hash slot for a given key, it simply takes the CRC16 of the key modulo 16384. Every node in a Redis Cluster is responsible for a subset of the hash slots. This makes it easy to add and remove cluster nodes dynamically without any downtime. This makes Redis easy to scale up or down as needed.
-
+**Cluster mode**: Redis has support for cluster mode, which allows for both read and write scalability. In cluster mode, Redis partitions the data across multiple nodes and automatically distributes reads and writes across the nodes. Redis clients are aware of the target node in the cluster and can read/write from/to that node directly. But this is not mandatory and they can read/write from/to any node. This will be auto-routed by the cluster after read/write is done.
+Cluster mode offers replications for each node to prevent a single point of failure and provides high availability. In Redis, this is provided by the master-replica model. It does automatic failover when the primary node is unhealthy. 
+It also has support for automatic sharding and resharding. Sharding is done automatically across multiple nodes using a hash slot sharding strategy. There are 16384 hash slots in Redis Cluster, and to compute the hash slot for a given key, it simply takes the CRC16 of the key modulo 16384. Every node in a Redis Cluster is responsible for a subset of the hash slots. This makes it easy to add and remove cluster nodes dynamically without any downtime. In conclusion using the cluster mode makes scaling up and down as needed rather easy with Redis.
 
 ### Other Pieces
 
 Kubernetes to a great extent facilitates our requirements. It handles load balancing, managing the lifetime of the containers, scaling up and down of our instances, resiliency, and resource management. But we still need a few more pieces to have a working solution. Namely an API Gateway, Edge Load Balancer, and Observability Stack.
 
-1. **API Gateway**: API Gateway is the single entry point of external traffic to the application that provides a layer of abstraction between the application's microservices and extertnal traffic. It offers service discovery and routing of the requests to the appropriate Kubernetes services. It can offer authentication and authorization, rate limiting, request validation, encryption, and so on. On top of all of that analytics and monitoring of the traffic can also be offloaded to API Gateway. Some of the choices of API Gateway software are Kong, Istio, Traefik and Ambassador.
+1. **API Gateway**: API Gateway is the single entry point of external traffic to the application that provides a layer of abstraction between the application's microservices and extertnal traffic. It offers service discovery and routing of the requests to the appropriate Kubernetes services. It can offer authentication and authorization, rate limiting, request validation, encryption, and so on. On top of all of that analytics and monitoring of the traffic can also be offloaded to API Gateway. Some of the choices of API Gateway software are Kong, Istio, Traefik, and Ambassador.
 2. **Edge Load Balancer**: An edge or external HTTP(S) load balancer is a proxy-based Layer 7 load balancer that enables you to run and scale your services behind a single external IP address. The external HTTP(S) load balancer distributes HTTP and HTTPS traffic to backends hosted on a variety of your cloud platforms (such as the Kubernetes cluster). This load balancer connects the incoming traffic to downstream API Gateway. This is usually provided by the Cloud Provider.
-3. **Observability Stack**: This is not related to the Scalability considerations but it's worth mentioning as part of our global architecture. Observability refers to the ability to measure a system’s current state based on the data it generates, such as logs, metrics, and traces. This is important because the cloud-native environments has gotten more complex and troubleshooting the root cause of a failure have become more difficult to pinpoint. This enables us to collect relevant data and be proactive about our system and address a potential bottleneck. The three pillars of observability are logs, metrics, and traces. The industry relies on standard practices and widely accepted software and tools to implement observability. OpenTelemetry, Prometheus, and Grafana are some of the accepted tools that can help us achieve observability goals.
+3. **Observability Stack**: This is not related to the Scalability considerations but it's worth mentioning as part of our global architecture. Observability refers to the ability to measure a system's current state based on the data it generates, such as logs, metrics, and traces. This is important because the cloud-native environments has gotten more complex and troubleshooting the root cause of a failure have become more difficult to pinpoint. This enables us to collect relevant data and be proactive about our system and address a potential bottleneck. The three pillars of observability are logs, metrics, and traces. The industry relies on standard practices and widely accepted software and tools to implement observability. OpenTelemetry, Prometheus, and Grafana are some of the accepted tools that can help us achieve observability goals.
 
 
 ![Architecture Diagram](architecture.jpg "architecture diagram")
@@ -444,7 +443,7 @@ While Kubernetes and Cloud facilitate our scalability issues, help us reduce cos
 ![Who said it's easy?](cicd.png "cicd")
 
 * **CI/CD pipeline**: Speaking the of CI/CD pipeline, we'd be remiss if we didn't mention that. CI/CD is the bridge between source code and Kubernetes. Because k8s has a lot of complexity and your team has certain requirements and the choices are too many, getting it right takes time, patience, and many many iterations.
-* **Challenges of Redis**: Our data storage, Redis comes with its own set of challenges and limitations. For example, we discussed the case of dynamic resharding. That operation is not cheap. Data needs to move around when we need to add or remove a node and that can be time-consuming and resource intensive which causes performance overhead. Consistency is also limited. The case of HA comes with a nonzero chance that a slave node is promoted to master right after the master has accepted a write but it hasn't been promoted to the slave just yet. And that is a tradeoff between performance and consistency. A limitation that we should be aware of. Getting the clustering right, if we choose to manage it ourselves can be complex which requires careful configuration and monitoring to ensure data is distributed evenly.
+* **Challenges of Redis**: Our data storage, Redis comes with its own set of challenges and limitations. For example, we discussed the case of dynamic resharding. That operation is not cheap. Data needs to move around when we need to add or remove a node and that can be time-consuming and resource intensive which causes performance overhead. Consistency is also limited. The case of HA comes with a nonzero chance that a slave node is promoted to master right after the master has accepted a write but it hasn't been propagated to the slave just yet. And that is a tradeoff between performance and consistency. A limitation that we should be aware of. Getting the clustering right, if we choose to manage it ourselves can be complex which requires careful configuration and monitoring to ensure data is distributed evenly.
 
 ## 7. Final Words
 
