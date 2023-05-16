@@ -98,8 +98,8 @@ Please design a REST service to support those operations. It should scale to mil
 >  Accept: application/json
 >  Accept-Charset: utf-8
 >{
->	"region" : "CA",
-> "gamemode" : "GM01"
+>	  "region" : "CA",
+>     "gamemode" : "GM01"
 >}
 > ```
 
